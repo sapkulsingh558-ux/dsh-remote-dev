@@ -10,6 +10,8 @@ Host APIs are optional peers rather than production dependencies. This prevents 
 
 ## Runtime changes
 
+- The seven standalone tool names are `remote_dev_connect`, `remote_dev_disconnect`, `remote_dev_status`, `remote_dev_exec`, `remote_dev_read`, `remote_dev_write` and `remote_dev_list`. No generic `remote_*` aliases are registered: other remote plugins already own some of those names, and global duplicates abort their startup. Coexistence is tested using the actual host registry in both load orders.
+
 - Tool definitions retain the current property-local `required` DSL. Results are normalized to the strict lossless-JSON schema, including nullable status/exit fields. Tool cancellation is forwarded through acquisition and SSH/SFTP operations.
 - Remote filesystem implements range reads, patches, deletes and moves with the current guard contracts. Streaming preserves newlines and UTF-8 boundaries. Bounded byte reads fail on overflow instead of returning a truncated file. Whole-text reads match the current full-file API; callers should stream large text.
 - SFTP writes stage exclusively and check guards before publication. They never unlink a destination to retry rename. Cancellation before publication cleans confirmed-owned staging files. Once rename is dispatched, the operation awaits its acknowledgement and reports committed success or the actual publication error, rather than misreporting cancellation after changing the target.

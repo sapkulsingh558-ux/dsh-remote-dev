@@ -39,7 +39,7 @@ DeepSeek Harness 的 **SSH 远程开发插件**。连上任意一台能 SSH 的�
 
 此分支适配 **DeepSeek Harness 0.2.2-rc.3**。DSH 核心包由宿主提供，插件通过可选 peer 声明使用它们，不会把旧核心包安装进 profile。`engines.dsh` 限定已验证版本；不建议跳过版本检查。
 
-完整远程工作区当前面向 POSIX 远端（Linux、macOS、WSL）。标准 `glob` / `grep` 通过远程 SSH 子进程调用目标机器的 **ripgrep（`rg`）**，需要该命令已在远端 PATH 中；缺失时明确报错，不回退本机搜索。Windows 保留连接、SFTP 与独立 `remote_*` 工具；标准工作区的进程执行、PTY、额外控制通道和原始输出 spill 暂未适配。
+完整远程工作区当前面向 POSIX 远端（Linux、macOS、WSL）。标准 `glob` / `grep` 通过远程 SSH 子进程调用目标机器的 **ripgrep（`rg`）**，需要该命令已在远端 PATH 中；缺失时明确报错，不回退本机搜索。Windows 保留连接、SFTP 与独立 `remote_dev_*` 工具；标准工作区的进程执行、PTY、额外控制通道和原始输出 spill 暂未适配。
 
 取消与超时关闭操作所属的 SSH 通道，保留共享连接；通道关闭不能证明远端整个进程树已退出。SFTP 编辑会检查版本，但外部程序在同一时间戳精度内进行等长修改时，仍受服务端元数据精度限制。替换写入不再通过删除目标文件后重试 rename 的方式完成。
 
@@ -109,11 +109,11 @@ dsh plugin --profile web add dsh-remote-dev
 
 | 工具 | 用途 |
 | --- | --- |
-| `remote_status` | 查看连接配置、状态、平台和最近错误 |
-| `remote_connect` / `remote_disconnect` | 连接或断开一台机器 |
-| `remote_exec` | 通过 SSH 执行命令 |
-| `remote_read` / `remote_write` | 通过 SFTP 读写 UTF-8 文本 |
-| `remote_list` | 通过 SFTP 浏览远程目录 |
+| `remote_dev_status` | 查看连接配置、状态、平台和最近错误 |
+| `remote_dev_connect` / `remote_dev_disconnect` | 连接或断开一台机器 |
+| `remote_dev_exec` | 通过 SSH 执行命令 |
+| `remote_dev_read` / `remote_dev_write` | 通过 SFTP 读写 UTF-8 文本 |
+| `remote_dev_list` | 通过 SFTP 浏览远程目录 |
 
 ## 常见问题
 

@@ -7,7 +7,8 @@
 import assert from 'node:assert/strict'
 import { EventEmitter, getEventListeners } from 'node:events'
 import { Client } from 'ssh2'
-import { assertSupportedJsonSchema, validateJsonSchemaValue } from '@deepseek-ai/dsh-tools'
+import { assertSupportedJsonSchema, validateJsonSchemaValue, defineTool, ToolsService } from '@deepseek-ai/dsh-tools'
+import { Context } from '@deepseek-ai/cordis'
 import { snapshotJsonValue } from '@deepseek-ai/dsh-util-values'
 import { applyRemoteTools } from '../packages/remote-ssh/tools.js'
 import { RemoteConnection } from '../packages/remote-ssh/transport.js'
@@ -56,9 +57,9 @@ applyRemoteTools({
 	inject() {},
 }, manager)
 const args = {
-	remote_connect: { profile: 'ptest' }, remote_disconnect: { profile: 'ptest' }, remote_status: {},
-	remote_exec: { profile: 'ptest', command: 'pwd' }, remote_read: { profile: 'ptest', path: 'file' },
-	remote_write: { profile: 'ptest', path: 'file', content: 'new' }, remote_list: { profile: 'ptest', path: '.' },
+	remote_dev_connect: { profile: 'ptest' }, remote_dev_disconnect: { profile: 'ptest' }, remote_dev_status: {},
+	remote_dev_exec: { profile: 'ptest', command: 'pwd' }, remote_dev_read: { profile: 'ptest', path: 'file' },
+	remote_dev_write: { profile: 'ptest', path: 'file', content: 'new' }, remote_dev_list: { profile: 'ptest', path: '.' },
 }
 function canonical(tool, value) {
 	assert.notEqual(snapshotJsonValue(value), undefined, `${tool.name}: lossless JSON`)
@@ -76,16 +77,59 @@ await test('all seven actual defineTool definitions compile and validate outputs
 		canonical(tool, await tool.execute(args[tool.name], { signal: new AbortController().signal }))
 	}
 })
+await test('namespaced tools coexist with existing remote plugins in either registration order', async () => {
+	const existing = ['remote_hosts', 'remote_exec', 'remote_ls', 'remote_read', 'remote_write']
+	for (const legacyFirst of [true, false]) {
+		const ctx = new Context()
+		ctx.provide('systemPrompt', { tools: () => () => {} })
+		const registry = new ToolsService(ctx)
+		const disposers = []
+		const legacy = new Map()
+		const registerLegacy = () => {
+			for (const name of existing) {
+				const tool = defineTool({ name, description: 'Existing remote plugin', parameters: {},
+					output: { schema: { type: 'object', additionalProperties: false, properties: {} }, render: () => [] },
+					execute: async () => ({}) })
+				legacy.set(name, tool)
+				disposers.push(registry.register(tool))
+			}
+		}
+		const registerRepair = () => applyRemoteTools({
+			get(name) { return name === 'tools' ? { register(tool) { disposers.push(registry.register(tool)) } } : undefined },
+			inject() {},
+		}, manager)
+		try {
+			if (legacyFirst) { registerLegacy(); registerRepair() }
+			else { registerRepair(); registerLegacy() }
+			assert.deepEqual(registry.definitions().map(tool => tool.name).sort(), [...existing, ...Object.keys(args)].sort())
+			for (const name of existing) assert.equal(registry.definitions().find(tool => tool.name === name), legacy.get(name))
+		} finally {
+			for (const dispose of disposers.reverse()) dispose()
+		}
+		assert.equal(registry.definitions().length, 0)
+	}
+})
+await test('prompt guidance names only the namespaced tool family', async () => {
+	let section
+	applyRemoteTools({
+		get(name) { return name === 'tools' ? { register() {} } : name === 'systemPrompt' ? { section(value) { section = value; return () => {} } } : undefined },
+		effect(fn) { fn() }, inject() {},
+	}, manager)
+	assert.equal(section.name, 'tool:remote-dev')
+	assert.ok(section.text().includes('remote_dev_connect'))
+	assert.ok(section.text().includes('remote_dev_exec'))
+	assert.equal(/\bremote_(?:connect|exec|read|write|list)\b/.test(section.text()), false)
+})
 await test('required properties compile from property-local DSL and reject missing arguments', async () => {
-	const tool = definitions.get('remote_exec')
+	const tool = definitions.get('remote_dev_exec')
 	assert.deepEqual(tool.parameters.required, ['profile', 'command'])
 	assert.equal(tool.parameters.properties.profile.required, undefined)
 	await assert.rejects(tool.execute({ profile: 'ptest' }), /command/)
-	await assert.rejects(definitions.get('remote_write').execute({ profile: 'ptest', path: 'file' }), /content/)
+	await assert.rejects(definitions.get('remote_dev_write').execute({ profile: 'ptest', path: 'file' }), /content/)
 })
 await test('status accepts null platform/error and secretStore but strips secrets and unknown fields', async () => {
-	const tool = definitions.get('remote_connect')
-	const value = canonical(tool, await tool.execute(args.remote_connect))
+	const tool = definitions.get('remote_dev_connect')
+	const value = canonical(tool, await tool.execute(args.remote_dev_connect))
 	assert.equal(value.secretStore, 'file')
 	assert.equal(value.lastError, null)
 	assert.equal(value.platform, null)
@@ -94,32 +138,32 @@ await test('status accepts null platform/error and secretStore but strips secret
 	const prior = manager.statusAll
 	manager.statusAll = () => [{ ...status, keyPath: undefined, lastError: { code: 'RESET', zh: '断开', en: 'Closed', detail: 'private detail' } }]
 	try {
-		const result = canonical(definitions.get('remote_status'), await definitions.get('remote_status').execute({}))
+		const result = canonical(definitions.get('remote_dev_status'), await definitions.get('remote_dev_status').execute({}))
 		assert.equal('keyPath' in result[0], false)
 		assert.equal('detail' in result[0].lastError, false)
 	} finally { manager.statusAll = prior }
 })
 await test('nullable exit, signal, platform and absent directory metadata are lossless JSON', async () => {
-	const exec = canonical(definitions.get('remote_exec'), await definitions.get('remote_exec').execute(args.remote_exec))
+	const exec = canonical(definitions.get('remote_dev_exec'), await definitions.get('remote_dev_exec').execute(args.remote_dev_exec))
 	assert.equal(exec.exit_code, null)
 	assert.equal(exec.signal, null)
 	assert.equal(exec.platform, null)
-	const list = canonical(definitions.get('remote_list'), await definitions.get('remote_list').execute(args.remote_list))
+	const list = canonical(definitions.get('remote_dev_list'), await definitions.get('remote_dev_list').execute(args.remote_dev_list))
 	assert.deepEqual(list.entries.map((entry) => [entry.size, entry.mtime]), [[null, null], [0, 0]])
 })
 await test('tool execution forwards signal through acquisition and each SSH operation', async () => {
 	const signal = new AbortController().signal
-	for (const name of ['remote_connect', 'remote_exec', 'remote_read', 'remote_write', 'remote_list']) {
+	for (const name of ['remote_dev_connect', 'remote_dev_exec', 'remote_dev_read', 'remote_dev_write', 'remote_dev_list']) {
 		calls.length = 0
 		await definitions.get(name).execute(args[name], { signal })
 		for (const call of calls.filter((call) => call[2] && typeof call[2] === 'object')) assert.equal(call[2].signal, signal)
-		if (name !== 'remote_connect') assert.equal(calls[0][0], 'require')
+		if (name !== 'remote_dev_connect') assert.equal(calls[0][0], 'require')
 	}
 })
 await test('exec uses documented timeout default, clamps max, and preserves bound cwd', async () => {
 	for (const [timeout_ms, expected] of [[undefined, 30000], [12, 12], [999999, 600000], [-5, 1]]) {
 		calls.length = 0
-		await definitions.get('remote_exec').execute({ ...args.remote_exec, ...(timeout_ms === undefined ? {} : { timeout_ms }) })
+		await definitions.get('remote_dev_exec').execute({ ...args.remote_dev_exec, ...(timeout_ms === undefined ? {} : { timeout_ms }) })
 		const call = calls.find((call) => call[0] === 'exec')
 		assert.equal(call[2].timeoutMs, expected)
 		assert.equal(call[1], "cd '/work' && pwd")
@@ -138,7 +182,7 @@ await test('abort while acquiring prevents subsequent file side effects', async 
 	const controller = new AbortController()
 	manager.require = async (_id, opts) => { assert.equal(opts.signal, controller.signal); controller.abort(); return connection }
 	calls.length = 0
-	try { await assert.rejects(definitions.get('remote_write').execute(args.remote_write, { signal: controller.signal }), { name: 'AbortError' }) }
+	try { await assert.rejects(definitions.get('remote_dev_write').execute(args.remote_dev_write, { signal: controller.signal }), { name: 'AbortError' }) }
 	finally { manager.require = original }
 	assert.deepEqual(calls, [])
 })

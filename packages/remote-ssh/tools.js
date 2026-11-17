@@ -1,6 +1,6 @@
 /**
- * dsh-remote-ssh model tools: remote_connect / remote_disconnect /
- * remote_status / remote_exec / remote_read / remote_write / remote_list.
+ * dsh-remote-ssh model tools: remote_dev_connect / remote_dev_disconnect /
+ * remote_dev_status / remote_dev_exec / remote_dev_read / remote_dev_write / remote_dev_list.
  * Registered on the `tools` service; the plugin also adds a systemPrompt
  * section so the model knows the remote tool family exists.
  *
@@ -62,10 +62,10 @@ export function applyRemoteTools(ctx, manager) {
 	if (tools === undefined) return // no tools registry in this context
 
 	tools.register(defineTool({
-		name: 'remote_connect',
-		description: 'Connect to a machine over SSH using a stored profile id, or ad-hoc host/user with password or private-key auth. Keeps the connection open for later remote_* calls.',
+		name: 'remote_dev_connect',
+		description: 'Connect to a machine over SSH using a stored profile id, or ad-hoc host/user with password or private-key auth. Keeps the connection open for later remote_dev_* calls.',
 		parameters: {
-			profile: { type: 'string', description: 'Stored profile id (see remote_status for the list).' },
+			profile: { type: 'string', description: 'Stored profile id (see remote_dev_status for the list).' },
 			host: { type: 'string', description: 'Host or IP when not using a stored profile.' },
 			port: { type: 'number', description: 'SSH port, default 22.' },
 			user: { type: 'string', description: 'Login user when not using a stored profile.' },
@@ -90,7 +90,7 @@ export function applyRemoteTools(ctx, manager) {
 	}))
 
 	tools.register(defineTool({
-		name: 'remote_disconnect',
+		name: 'remote_dev_disconnect',
 		description: 'Close the SSH connection of one profile.',
 		parameters: {
 			profile: { type: 'string', required: true, description: 'Profile id to disconnect.' },
@@ -112,7 +112,7 @@ export function applyRemoteTools(ctx, manager) {
 	}))
 
 	tools.register(defineTool({
-		name: 'remote_status',
+		name: 'remote_dev_status',
 		description: 'List stored remote profiles with connection status, detected platform, and the last error when a connection dropped.',
 		parameters: {},
 		output: {
@@ -131,7 +131,7 @@ export function applyRemoteTools(ctx, manager) {
 	}))
 
 	tools.register(defineTool({
-		name: 'remote_exec',
+		name: 'remote_dev_exec',
 		description: 'Run a command on the remote machine over an open SSH connection. Runs in the profile bound working directory when one is set. On Windows targets the command runs through the default shell (cmd.exe). Reconnects once with the stored credentials if the connection dropped.',
 		parameters: {
 			profile: { type: 'string', required: true, description: 'Profile id (must be connected first).' },
@@ -176,7 +176,7 @@ export function applyRemoteTools(ctx, manager) {
 	}))
 
 	tools.register(defineTool({
-		name: 'remote_read',
+		name: 'remote_dev_read',
 		description: 'Read a UTF-8 text file from the remote machine over SFTP (requires an open connection). Relative paths resolve against the profile bound working directory.',
 		parameters: {
 			profile: { type: 'string', required: true, description: 'Profile id.' },
@@ -202,7 +202,7 @@ export function applyRemoteTools(ctx, manager) {
 	}))
 
 	tools.register(defineTool({
-		name: 'remote_write',
+		name: 'remote_dev_write',
 		description: 'Write a UTF-8 text file on the remote machine over SFTP (requires an open connection). Relative paths resolve against the profile bound working directory.',
 		parameters: {
 			profile: { type: 'string', required: true, description: 'Profile id.' },
@@ -232,7 +232,7 @@ export function applyRemoteTools(ctx, manager) {
 	}))
 
 	tools.register(defineTool({
-		name: 'remote_list',
+		name: 'remote_dev_list',
 		description: 'List a directory on the remote machine over SFTP (requires an open connection); entries come back directories-first. Relative paths resolve against the profile bound working directory.',
 		parameters: {
 			profile: { type: 'string', required: true, description: 'Profile id.' },
@@ -284,7 +284,7 @@ export function applyRemoteTools(ctx, manager) {
 }
 
 /**
- * The remote_* tool guidance, plus the live remote working contexts the user
+ * The remote_dev_* tool guidance, plus the live remote working contexts the user
  * picked in the workspace directory flow. The section text is a provider so
  * every prompt assembly reflects the current bindings without re-registering.
  * Registration tolerates both orders: use the service synchronously when it
@@ -293,7 +293,7 @@ export function applyRemoteTools(ctx, manager) {
 function registerRemotePromptSection(ctx, manager) {
 	let registered = false
 	const sectionText = () => {
-		const base = 'Use the remote_* tools to work on a machine reachable over SSH: remote_connect first (auth is password or key), then remote_exec / remote_read / remote_write / remote_list with the profile id. Remote paths are paths on the remote machine. On Windows targets, commands run through cmd.exe. When a session runs on a remote machine through a remote-workspace preset, its ordinary read/write/edit/glob/grep/bash tools already operate there directly — use those instead of the remote_* tools inside such a session.'
+		const base = 'Use the remote_dev_* tools to work on a machine reachable over SSH: remote_dev_connect first (auth is password or key), then remote_dev_exec / remote_dev_read / remote_dev_write / remote_dev_list with the profile id. Remote paths are paths on the remote machine. On Windows targets, commands run through cmd.exe. When a session runs on a remote machine through a remote-workspace preset, its ordinary read/write/edit/glob/grep/bash tools already operate there directly — use those instead of the remote_dev_* tools inside such a session.'
 		const bound = manager.boundContexts()
 		if (bound.length === 0) return base
 		const lines = bound.map((p) => {
@@ -301,12 +301,12 @@ function registerRemotePromptSection(ctx, manager) {
 			return '- ' + where + " (profile id '" + p.id + "', name '" + (p.name || p.user + '@' + p.host) + "')"
 		})
 		return base + '\n\nRemote working directories the user picked for this deployment (most recent first):\n' + lines.join('\n') +
-			'\nFor each profile above: relative paths in remote_read / remote_write / remote_list resolve against its bound directory, and remote_exec runs there by default. Treat the most recent entry as the primary working directory unless the user says otherwise.'
+			'\nFor each profile above: relative paths in remote_dev_read / remote_dev_write / remote_dev_list resolve against its bound directory, and remote_dev_exec runs there by default. Treat the most recent entry as the primary working directory unless the user says otherwise.'
 	}
 	const register = (sp) => {
 		if (registered) return
 		registered = true
-		ctx.effect(() => sp.section({ name: 'tool:remote', order: 100, text: sectionText }))
+		ctx.effect(() => sp.section({ name: 'tool:remote-dev', order: 100, text: sectionText }))
 	}
 	const sp = ctx.get('systemPrompt')
 	if (sp !== undefined) register(sp)

@@ -5,7 +5,7 @@
  * exposes one shared RPC method table through both bridges the runtime
  * provides — the dynamic-plugin `harness.handle` surface and a JSON HTTP API
  * on `ctx.webServer` (`/dsh-remote/api/*`, same-origin only) — and registers
- * the remote_* model tools.
+ * the remote_dev_* model tools.
  *
  * @module dsh-remote-dev
  */
@@ -272,7 +272,7 @@ export class RemoteManager {
 		signal?.throwIfAborted()
 		if (args.profile) return this.connect(args.profile, { signal })
 		if (!args.host || !args.user) {
-			throw new Error('remote_connect needs a stored profile id, or host+user for an ad-hoc connection')
+			throw new Error('remote_dev_connect needs a stored profile id, or host+user for an ad-hoc connection')
 		}
 		const profile = {
 			id: `adhoc-${args.host}-${args.user}`,
@@ -315,7 +315,7 @@ export class RemoteManager {
 			}
 		}
 		const last = this.lastErrors.get(id)
-		throw new Error(`profile is not connected: ${id} — ${last ? `${last.code}: ${last.en}` : 'run remote_connect first'}`)
+		throw new Error(`profile is not connected: ${id} — ${last ? `${last.code}: ${last.en}` : 'run remote_dev_connect first'}`)
 	}
 
 	/** Test connectivity without keeping the connection open. */
@@ -447,8 +447,8 @@ export class RemoteManager {
 	/**
 	 * Persist the remote working directory picked in the workspace directory
 	 * flow. The binding is what makes a session develop on the remote: the
-	 * system prompt advertises it and the remote_* tools resolve relative
-	 * paths (and remote_exec's default cwd) against it.
+	 * system prompt advertises it and the remote_dev_* tools resolve relative
+	 * paths (and remote_dev_exec's default cwd) against it.
 	 */
 	bind(id, path) {
 		const profiles = loadProfiles()
@@ -479,7 +479,7 @@ export class RemoteManager {
 
 	/**
 	 * Prefix one shell command with a cd into the profile's bound directory
-	 * (remote_exec's default working directory). Profiles without a binding
+	 * (remote_dev_exec's default working directory). Profiles without a binding
 	 * run the command unchanged.
 	 */
 	withDefaultCwd(id, command, platform) {
@@ -708,7 +708,7 @@ export async function apply(ctx) {
 
 	// Remote workspaces: sidebar rows whose sessions run on the remote machine.
 	// Wiring is service-optional, so a headless or preset-less composition keeps
-	// working with the standalone remote_* tools alone.
+	// working with the standalone remote_dev_* tools alone.
 	const workspaces = new RemoteWorkspaces({ manager })
 	await workspaces.attach(ctx)
 	const table = rpcTable(manager, workspaces)

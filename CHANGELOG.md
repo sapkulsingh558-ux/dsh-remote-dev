@@ -4,6 +4,8 @@
 
 ### DSH 0.2.2-rc.3 compatibility
 
+- Namespace this plugin's seven model tools as `remote_dev_*` and its prompt section as `tool:remote-dev`. Generic `remote_exec` / `remote_read` / `remote_write` belong to other installed remote plugins; registering those aliases globally prevented `dsh-remote-vs` from starting. Actual-host registry tests cover coexistence in both registration orders without replacing another provider's tools.
+
 - Declare the tested DSH runtime and use optional host-core peers instead of installing obsolete core packages into the profile. Pin development interfaces and verify tarball installation neither auto-installs nor replaces host core packages.
 - Validate all seven remote tool results against current lossless JSON/output schemas; forward cooperative cancellation and apply the documented execution deadline.
 - Implement current filesystem range/patch/delete/move contracts, preserve UTF-8/newlines, reject bounded-read overflow, enforce current edit guards and serialize same-connection writes. Publish replacements without deleting the destination as a rename fallback.
