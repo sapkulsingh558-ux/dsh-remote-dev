@@ -22,6 +22,10 @@
   <img src="https://raw.githubusercontent.com/tsja2001/dsh-remote-ssh/main/docs/images/remote-connections.png" alt="DeepSeek Harness Remote SSH settings UI" width="100%">
 </p>
 
+## Compatibility
+
+This branch targets **DSH 0.2.2-rc.3**. Host core packages are optional peers, never bundled runtime dependencies. Full remote workspaces target POSIX servers and require `rg` on the remote PATH for standard glob/grep. Windows retains standalone `remote_*` tools and SFTP; workspace subprocess execution, PTYs, control channels and raw-output spill are unsupported and fail explicitly. Cancellation observes SSH channel closure, not remote process-tree quiescence. SFTP external-edit detection is limited by server metadata precision.
+
 ## Install
 
 This is a [DeepSeek Harness](https://github.com/deepseek-ai/DeepSeek-Harness) bundle. One command

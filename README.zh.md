@@ -30,7 +30,7 @@
 
 DeepSeek Harness Remote Dev 是一个 SSH 远程开发插件：连接任意可访问的 SSH 服务器，把远程目录直接加入 DeepSeek Harness 工作区。像 VS Code Remote Development、Claude Code 和 Codex 的远程开发一样，界面运行在本机，但文件、命令和测试可以直接作用于远程机器。
 
-无需在远程服务器安装任何服务，目标机器只需要提供 SSH Server 和一个可登录账户；Node.js、DeepSeek Harness 和插件都运行在本机。
+无需在远程服务器安装 DSH 或 Agent，目标机器需要 SSH Server 和可登录账户，标准搜索还需要 `rg`；Node.js、DeepSeek Harness 和插件运行在本机。
 
 ## 核心体验
 
@@ -39,6 +39,12 @@ DeepSeek Harness Remote Dev 是一个 SSH 远程开发插件：连接任意可�
 - **完整 Web 管理**：在设置中添加、测试、编辑、连接和浏览远程设备，无需手改配置文件。
 - **密码或密钥认证**：支持密码、显式私钥、私钥口令和主机指纹校验。
 - **AI 原生工具**：可使用 remote_connect、remote_exec、remote_read、remote_write、remote_list 处理临时任务。
+
+## 兼容性
+
+本分支适配 DSH **0.2.2-rc.3**；核心接口使用宿主提供的可选 peer 依赖，`engines.dsh` 限定已验证版本。完整远程工作区面向 POSIX 远端，标准 `glob` / `grep` 需要目标机器 PATH 中有 `rg`，通过 SSH 子进程搜索，不回退本机。Windows 当前保留独立 `remote_*` 工具与 SFTP，标准进程工作区及 PTY 暂未适配。
+
+取消只关闭所属 SSH 通道，不能保证远端整个进程树已退出；SFTP 的外部并发修改检测受服务端时间戳精度限制。完整运行条件见 [主 README](README.md#兼容性与运行条件)。
 
 ## 快速开始
 
@@ -66,7 +72,7 @@ dsh plugin --profile web add dsh-remote-dev
 远程工作区是本插件的主要使用方式：
 
 - 远程目录显示为普通工作区，例如 app [SSH: buildbox]；
-- read、write、edit、glob、grep 通过 SFTP 操作远程文件；
+- read、write、edit 通过 SFTP 操作远程文件，glob、grep 经 SSH 调用远端 rg；
 - bash 通过 SSH 在远程目录中执行命令；
 - 相对路径以远程目录为基准，宿主机路径不会泄漏给模型；
 - persona、AGENTS.md、skills、todo、plan 和子 Agent 等其他会话能力继续保留。

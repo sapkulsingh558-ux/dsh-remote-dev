@@ -24,17 +24,37 @@ const STATUS_SCHEMA = {
 		boundAt: { type: 'string' },
 		hostFingerprint: { type: 'string' },
 		status: { type: 'string', required: true },
-		platform: { type: 'string' },
+		platform: { oneOf: [{ type: 'string' }, { type: 'null' }] },
 		lastError: {
-			type: 'object',
-			additionalProperties: false,
-			properties: {
-				code: { type: 'string', required: true },
-				zh: { type: 'string', required: true },
-				en: { type: 'string', required: true },
-			},
+			oneOf: [{
+				type: 'object',
+				additionalProperties: false,
+				properties: {
+					code: { type: 'string', required: true },
+					zh: { type: 'string', required: true },
+					en: { type: 'string', required: true },
+				},
+			}, { type: 'null' }],
 		},
+		secretStore: { type: 'string' },
 	},
+}
+
+/** Keep canonical values lossless JSON and never expose extra manager fields. */
+function statusValue(status) {
+	const value = {}
+	for (const key of Object.keys(STATUS_SCHEMA.properties)) {
+		if (status[key] !== undefined) value[key] = status[key]
+	}
+	if (value.lastError) {
+		const { code, zh, en } = value.lastError
+		value.lastError = { code, zh, en }
+	}
+	return value
+}
+
+function checkAbort(exec) {
+	exec?.signal?.throwIfAborted()
 }
 
 export function applyRemoteTools(ctx, manager) {
@@ -61,8 +81,11 @@ export function applyRemoteTools(ctx, manager) {
 				text: `connected: ${value.name} (${value.user}@${value.host}:${value.port}) platform=${value.platform ?? 'unknown'}`,
 			}],
 		},
-		async execute(args) {
-			return manager.connectAdhoc(args)
+		async execute(args, exec) {
+			checkAbort(exec)
+			const status = await manager.connectAdhoc(args, { signal: exec?.signal })
+			checkAbort(exec)
+			return statusValue(status)
 		},
 	}))
 
@@ -80,8 +103,11 @@ export function applyRemoteTools(ctx, manager) {
 			},
 			render: (args) => [{ type: 'text', text: `disconnected ${args.profile}` }],
 		},
-		async execute(args) {
-			return manager.disconnect(args.profile)
+		async execute(args, exec) {
+			checkAbort(exec)
+			const result = await manager.disconnect(args.profile)
+			checkAbort(exec)
+			return result
 		},
 	}))
 
@@ -98,8 +124,9 @@ export function applyRemoteTools(ctx, manager) {
 				).join('\n') || '(no profiles)',
 			}],
 		},
-		async execute() {
-			return manager.statusAll()
+		async execute(_args, exec) {
+			checkAbort(exec)
+			return manager.statusAll().map(statusValue)
 		},
 	}))
 
@@ -116,9 +143,9 @@ export function applyRemoteTools(ctx, manager) {
 				type: 'object',
 				additionalProperties: false,
 				properties: {
-					exit_code: { type: 'number' },
-					signal: { type: 'string' },
-					platform: { type: 'string' },
+					exit_code: { oneOf: [{ type: 'number' }, { type: 'null' }] },
+					signal: { oneOf: [{ type: 'string' }, { type: 'null' }] },
+					platform: { oneOf: [{ type: 'string' }, { type: 'null' }] },
 					stdout: { type: 'string', required: true },
 					stderr: { type: 'string', required: true },
 				},
@@ -128,16 +155,20 @@ export function applyRemoteTools(ctx, manager) {
 				text: `exit=${value.exit_code}${value.signal ? ` signal=${value.signal}` : ''}\n${value.stdout}${value.stderr}`,
 			}],
 		},
-		async execute(args) {
-			const conn = await manager.require(args.profile)
+		async execute(args, exec) {
+			checkAbort(exec)
+			const conn = await manager.require(args.profile, { signal: exec?.signal })
+			checkAbort(exec)
 			// The profile's bound directory (picked in the workspace directory
 			// flow) is the default working directory.
 			const command = manager.withDefaultCwd(args.profile, args.command, conn.platform)
-			const r = await conn.exec(command, { timeoutMs: args.timeout_ms })
+			const timeoutMs = Math.min(Math.max(args.timeout_ms || 30000, 1), 600000)
+			const r = await conn.exec(command, { timeoutMs, signal: exec?.signal })
+			checkAbort(exec)
 			return {
-				exit_code: r.code,
-				signal: r.signal,
-				platform: conn.platform,
+				exit_code: r.code ?? null,
+				signal: r.signal ?? null,
+				platform: conn.platform ?? null,
 				stdout: r.stdout,
 				stderr: r.stderr,
 			}
@@ -159,9 +190,14 @@ export function applyRemoteTools(ctx, manager) {
 			},
 			render: (_args, value) => [{ type: 'text', text: value.content }],
 		},
-		async execute(args) {
+		async execute(args, exec) {
+			checkAbort(exec)
 			const path = manager.resolveBound(args.profile, args.path)
-			return { content: await (await manager.require(args.profile)).readFile(path) }
+			const conn = await manager.require(args.profile, { signal: exec?.signal })
+			checkAbort(exec)
+			const content = await conn.readFile(path, { signal: exec?.signal })
+			checkAbort(exec)
+			return { content }
 		},
 	}))
 
@@ -184,9 +220,13 @@ export function applyRemoteTools(ctx, manager) {
 			},
 			render: (_args, value) => [{ type: 'text', text: `wrote ${value.path}` }],
 		},
-		async execute(args) {
+		async execute(args, exec) {
+			checkAbort(exec)
 			const path = manager.resolveBound(args.profile, args.path)
-			await (await manager.require(args.profile)).writeFile(path, args.content)
+			const conn = await manager.require(args.profile, { signal: exec?.signal })
+			checkAbort(exec)
+			await conn.writeFile(path, args.content, { signal: exec?.signal })
+			checkAbort(exec)
 			return { ok: true, path }
 		},
 	}))
@@ -212,8 +252,8 @@ export function applyRemoteTools(ctx, manager) {
 							properties: {
 								name: { type: 'string', required: true },
 								type: { type: 'string', required: true },
-								size: { type: 'number' },
-								mtime: { type: 'number' },
+								size: { oneOf: [{ type: 'number' }, { type: 'null' }] },
+								mtime: { oneOf: [{ type: 'number' }, { type: 'null' }] },
 							},
 						},
 					},
@@ -224,9 +264,19 @@ export function applyRemoteTools(ctx, manager) {
 				text: value.entries.map((e) => `${e.type === 'directory' ? 'd' : e.type === 'symlink' ? 'l' : '-'}  ${e.size ?? ''}  ${e.name}`).join('\n') || '(empty)',
 			}],
 		},
-		async execute(args) {
+		async execute(args, exec) {
+			checkAbort(exec)
 			const path = manager.resolveBound(args.profile, args.path)
-			return { entries: await (await manager.require(args.profile)).listDir(path) }
+			const conn = await manager.require(args.profile, { signal: exec?.signal })
+			checkAbort(exec)
+			const entries = await conn.listDir(path, { signal: exec?.signal })
+			checkAbort(exec)
+			return { entries: entries.map((entry) => ({
+				name: entry.name,
+				type: entry.type,
+				size: entry.size ?? null,
+				mtime: entry.mtime ?? null,
+			})) }
 		},
 	}))
 
